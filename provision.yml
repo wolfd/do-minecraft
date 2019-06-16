@@ -1,0 +1,78 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: False
+
+  tasks:
+    - name: Create new Droplet.
+      digital_ocean_droplet:
+        state: present
+        name: craft-server
+        # private_networking: yes
+        size_id: s-4vcpu-8gb
+        image_id: ubuntu-18-04-x64
+        region_id: sfo2
+        # Customize this for your account.
+        ssh_keys: [19189454, 24833447]
+        # Required for idempotence/only one droplet creation.
+        unique_name: yes
+      register: do
+
+    - name: Add new host to our inventory.
+      add_host:
+        name: "{{ do.data.ip_address }}"
+        groups: do
+      when: do.data is defined
+      changed_when: False
+
+    - name: Point domain to droplet
+      digital_ocean_domain:
+        state: present
+        name: "craft.wolfd.io"
+        ip: "{{ do.data.ip_address }}"
+
+      when: do.data is defined
+      changed_when: False
+
+    - name: Attach minecraft volume to droplet
+      digital_ocean_block_storage:
+        state: present
+        command: attach
+        # api_token: <TOKEN>
+        volume_name: minecraft
+        region: sfo2
+        droplet_id: "{{ do.data.droplet.id }}"
+      when: do.data is defined
+      changed_when: False
+
+- hosts: do
+  remote_user: root
+  gather_facts: False
+
+  tasks:
+    - name: Wait for port 22 to become available.
+      local_action: "wait_for port=22 host={{ inventory_hostname }}"
+
+    - name: apply apt-get update --fix-missing
+      command: apt-get update --fix-missing
+
+    - name: install java
+      apt: pkg=openjdk-8-jdk
+
+    - name: make the minecraft directory
+      file: state=directory path=/mnt/craft
+
+    - name: Get the volume name
+      shell: ls /dev/disk/by-id/ | grep -v part
+      register: volume_name_raw
+
+    - set_fact:
+        volume_name: "{{ volume_name_raw.stdout }}"
+
+    - name: Mount volume read-write
+      mount:
+        path: /mnt/craft
+        src: /dev/disk/by-id/{{ volume_name }}
+        fstype: ext4
+        opts: defaults,discard
+        state: mounted

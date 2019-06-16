@@ -1,0 +1,19 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: False
+
+  tasks:
+    - name: Kill Droplet.
+      digital_ocean_droplet:
+        state: absent
+        name: craft-server
+        # private_networking: yes
+        size_id: s-4vcpu-8gb
+        image_id: ubuntu-18-04-x64
+        region_id: sfo2
+        # Customize this for your account.
+        ssh_keys: [19189454, 24833447]
+        # Required for idempotence/only one droplet creation.
+        unique_name: yes
+      register: do
